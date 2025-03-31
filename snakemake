@@ -1,0 +1,71 @@
+# Snakefile
+
+SAMPLES = ["normal", "tumor"]
+NAME = config["sample_name"]
+REF = config["reference"]
+THREADS = config["threads"]
+
+rule all:
+    input:
+        f"{NAME}.somatic.vcf"
+
+rule align:
+    input:
+        fq1 = lambda wildcards: config[f"{wildcards.sample}_fq1"],
+        fq2 = lambda wildcards: config[f"{wildcards.sample}_fq2"]
+    output:
+        f"{NAME}.{{sample}}.bam"
+    shell:
+        """
+        {config[bwa]} mem -R "@RG\\tID:HWI\\tSM:{wildcards.sample}_{NAME}\\tPL:ILLUMINA" \
+        -t {THREADS} {REF} {input.fq1} {input.fq2} > {output}
+        """
+
+rule sort:
+    input:
+        f"{NAME}.{{sample}}.bam"
+    output:
+        f"{NAME}.{{sample}}.sort.bam"
+    shell:
+        "{config[samtools]} sort -@ {THREADS} {input} -o {output}"
+
+rule markdup:
+    input:
+        f"{NAME}.{{sample}}.sort.bam"
+    output:
+        bam = f"{NAME}.{{sample}}.dedupped.bam",
+        metrics = f"{NAME}.{{sample}}_metrics.txt"
+    shell:
+        "{config[gatk]} MarkDuplicates -I {input} -O {output.bam} "
+        "--METRICS_FILE {output.metrics} --REMOVE_DUPLICATES true"
+
+rule index:
+    input:
+        f"{NAME}.{{sample}}.dedupped.bam"
+    output:
+        f"{NAME}.{{sample}}.dedupped.bam.bai"
+    shell:
+        "{config[samtools]} index -@ {THREADS} {input}"
+
+rule base_recalibration:
+    input:
+        f"{NAME}.{{sample}}.dedupped.bam"
+    output:
+        bam = f"{NAME}.{{sample}}.recalibrated.bam",
+        table = f"{NAME}.{{sample}}_recal_data.table"
+    shell:
+        """
+        {config[gatk]} BaseRecalibrator -R {REF} -I {input} -O {output.table}
+        {config[gatk]} ApplyBQSR -R {REF} -I {input} --bqsr-recal-file {output.table} -O {output.bam}
+        """
+
+rule mutect:
+    input:
+        n = f"{NAME}.normal.recalibrated.bam",
+        t = f"{NAME}.tumor.recalibrated.bam"
+    output:
+        f"{NAME}.somatic.vcf"
+    shell:
+        """
+        {config[gatk]} Mutect2 -R {REF} -I {input.n} -I {input.t} -normal normal_{NAME} -O {output}
+        """
