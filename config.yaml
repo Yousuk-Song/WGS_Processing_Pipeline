@@ -1,0 +1,12 @@
+sample_name: mysample
+reference: /path/to/hg38.fa
+threads: 8
+
+bwa: /path/to/bwa
+samtools: /path/to/samtools
+gatk: /path/to/gatk
+
+normal_fq1: /path/to/normal_R1.fastq.gz
+normal_fq2: /path/to/normal_R2.fastq.gz
+tumor_fq1: /path/to/tumor_R1.fastq.gz
+tumor_fq2: /path/to/tumor_R2.fastq.gz
